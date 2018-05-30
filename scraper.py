@@ -9,6 +9,7 @@ import urllib2
 from datetime import datetime
 from bs4 import BeautifulSoup
 
+
 #### FUNCTIONS 1.0
 
 def validateFilename(filename):
@@ -81,52 +82,61 @@ def convert_mth_strings ( mth_string ):
         mth_string = mth_string.replace(k, v)
     return mth_string
 
+
 #### VARIABLES 1.0
 
-entity_id = "E1821_WCC_gov"
-url = "http://www.worcestershire.gov.uk/info/20024/council_finance/331/payments_to_commercial_suppliers_over_500_and_government_procurement_card_transactions"
+entity_id = "E0431_AVDC_gov"
+url = "https://www.aylesburyvaledc.gov.uk/section/invoices-over-£500"
 errors = 0
 data = []
 
+
 #### READ HTML 1.0
-
-html = urllib2.urlopen(url)
-soup = BeautifulSoup(html, 'lxml')
-
+import requests
+html = requests.get(url)
+soup = BeautifulSoup(html.text, "lxml")
 
 #### SCRAPE DATA
 
-block = soup.find('div',{'id':'content'})
-links = block.findAll('a', text=re.compile('View Reports'))
-
+links = soup.find_all('a', href=True)
 for link in links:
-    if 'http' not in link['href']:
-        suburl = 'http://www.worcestershire.gov.uk' + link['href']
-    else:
-        suburl = link['href']
-    if 'payments_to_commercial_suppliers_over' in suburl:
-        html2 = urllib2.urlopen(suburl)
-        soup2 = BeautifulSoup(html2, 'lxml')
-        block = soup2.find('ul', {'class':'item-list item-list__rich'})
-        sublinks = block.findAll('a', href=True)
-        for sublink in sublinks:
-            filePageUrl = sublink['href']
-            title = sublink.encode_contents(formatter='html').replace('&nbsp;',' ')
-            title = title.upper().strip()
-            html3 = urllib2.urlopen(filePageUrl)
-            soup3 = BeautifulSoup(html3, 'lxml')
-            block = soup3.find('main',{'class':'main-content'})
-            filelinks = block.findAll('a', href=True)
-            for filelink in filelinks:
-                fileurl = filelink['href']
-                if 'Download' in filelink.text:
-                    csvYr = title.split(' ')[-1]
-                    csvMth = title.split(' ')[-2][:3]
-                    if ' - ' not in title:
-                        csvYr = title.split()[1]
-                        csvMth = title.split()[0][:3]
-                    csvMth = convert_mth_strings(csvMth)
-                    data.append([csvYr, csvMth, fileurl])
+    if 'for 20' in link.text:
+        if 'http' not in link['href']:
+            year_url = 'https://www.aylesburyvaledc.gov.uk' + link['href']
+        else:
+            year_url = link['href']
+        year_html = urllib2.urlopen(year_url)
+        year_soup = BeautifulSoup(year_html, 'lxml')
+        blocks = year_soup.find('ul', 'download-list').find_all('a')
+        for block in blocks:
+            url = block['href']
+            if '.csv' in url or '.xlsx' in url or '.xlx' in url:
+                if 'http' not in url:
+                    url = 'https://www.aylesburyvaledc.gov.uk' + url
+                else:
+                    url = url
+                file_name = block.text
+                csvMth = file_name[:3]
+                csvYr = file_name.split()[1]
+                if 'Jan - Mar' in file_name or 'Jan-March' in file_name or 'January to March' in file_name:
+                    csvMth = 'Q1'
+                if 'Apr - Jun' in file_name:
+                    csvMth = 'Q2'
+                if 'Jul - Sep' in file_name:
+                    csvMth = 'Q3'
+                if 'Oct - Dec' in file_name or 'October to December' in file_name:
+                    csvMth = 'Q4'
+                if 'Jan - Mar' in file_name:
+                    csvMth = 'Q1'
+                if 'Q' in csvMth:
+                    match = re.match(r'.*([1-3][0-9]{3})', file_name)
+                    if match is not None:
+                        csvYr = match.group(1)
+                if '-' in csvYr:
+                    csvYr = '2015'
+                csvMth = convert_mth_strings(csvMth.upper())
+                data.append([csvYr, csvMth, url])
+
 
 #### STORE DATA 1.0
 
